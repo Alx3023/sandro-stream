@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SANDRO STREAM PLUS</title>
+    
+    <!-- PWA / iPad Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sandro Stream">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0f0f0f">
+    
+    <!-- Icone per iPad/iPhone (Sostituisci i link con le tue icone reali se le ospiti online) -->
+    <!-- Per test locali, il browser userà un'icona generica, ma per l'installazione reale servono questi file -->
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+    
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root {
+            --primary: #e50914;
+            --dark: #0f0f0f;
+            --panel: #1a1a1a;
+            --border: #333;
+            --text: #e0e0e0;
+            --plus-gold: #ffd700;
+            --rec-red: #ff3b30;
+            --success: #34c759;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--dark);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            height: 100dvh; /* Supporto per browser mobili con barra indirizzo dinamica */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* BLOCCA SCROLL PAGINA PRINCIPALE */
+            touch-action: manipulation;
+        }
+
+        /* HEADER */
+        header {
+            height: 50px;
+            background-color: #000;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            flex-shrink: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            font-weight: 800;
+            font-size: 18px;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+        }
+
+        .brand span { color: var(--primary); margin-right: 5px; }
+        .badge-plus {
+            background: linear-gradient(45deg, #ffd700, #ffaa00);
+            color: #000;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 900;
+            margin-left: 8px;
+        }
+
+        .system-status {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        /* MAIN LAYOUT */
+        .main-wrapper {
+            display: flex;
+            flex: 1;
+            overflow: hidden; /* Nessun scroll qui */
+            min-height: 0; /* Fix per flexbox overflow */
+        }
+
+        /* SIDEBAR CANALI - SCROLLABILE MA SENZA BARRA */
+        .sidebar {
+            width: 250px;
+            background-color: var(--panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #888;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .channel-count {
+            background: var(--primary);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+        }
+
+        .channel-list {
+            flex: 1;
+            overflow-y: auto; /* Scroll abilitato SOLO qui */
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch; /* Scroll fluido su iOS */
+        }
+
+        /* NASCONDI SCROLLBAR MA MANTIENI FUNZIONALITÀ */
+        .scrollbar-hide {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;  /* Chrome, Safari and Opera */
+        }
+
+        .channel-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #222;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .channel-item:hover { background-color: #252525; }
+        .channel-item.active { 
+            background-color: rgba(229, 9, 20, 0.15); 
+            border-left: 3px solid var(--primary);
+            color: #fff;
+        }
+
+        .channel-icon { font-size: 14px; opacity: 0.7; }
+
+        /* PLAYER AREA */
+        .player-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #000;
+            position: relative;
+            min-width: 0; /* Fix flex overflow */
+        }
+
+        .video-container {
+            flex: 1;
+            width: 100%;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            min-height: 0;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            max-height: 100%;
+            outline: none;
+        }
+
+        /* CONTROL BAR - SEMPRE VISIBILE IN BASSO */
+        .control-bar {
+            background-color: var(--panel);
+            border-top: 1px solid var(--border);
+            padding: 15px 20px;
+            display: flex;
+            flex-wrap: nowrap; /* Non andare a capo */
+            gap: 15px;
+            align-items: center;
+            flex-shrink: 0; /* Non rimpicciolire */
+            z-index: 100;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            gap: 8px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: #0a0a0a;
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+            width: 100%;
+        }
+
+        input[type="text"]:focus { border-color: var(--primary); }
+
+        /* BUTTONS */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: #ff1f2b; }
+
+        .btn-secondary { background: #333; color: #fff; }
+        .btn-secondary:hover { background: #444; }
+
+        .btn-record { 
+            background: #333; 
+            color: #fff; 
+            min-width: 130px;
+            justify-content: center;
+        }
+        
+        .btn-record.recording { 
+            background: var(--rec-red); 
+            animation: pulse 1.5s infinite; 
+        }
+
+        .btn-icon { padding: 8px 12px; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        /* INFO BAR */
+        .info-bar {
+            background: #0a0a0a;
+            padding: 8px 20px;
+            font-size: 12px;
+            color: #888;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #222;
+            flex-shrink: 0;
+        }
+
+        .recording-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--rec-red);
+            font-weight: 600;
+            display: none;
+        }
+
+        .recording-indicator.active { display: flex; }
+
+        /* RECORDINGS PANEL */
+        .recordings-panel {
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            height: 200px;
+            overflow-y: auto;
+            flex-shrink: 0;
+            display: none;
+        }
+
+        .recordings-panel.open { display: block; }
+
+        .recordings-header {
+            padding: 10px 20px;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #666;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: var(--panel);
+        }
+
+        .rec-item {
+            padding: 10px 20px;
+            border-bottom: 1px solid #222;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .rec-item:hover { background: #252525; }
+        .rec-actions { display: flex; gap: 8px; }
+        .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+        input[type="file"] { display: none; }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #444;
+        }
+        .empty-state-icon { font-size: 48px; margin-bottom: 15px; }
+
+        /* TOAST */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            right: 20px;
+            background: #333;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+            border-left: 3px solid var(--primary);
+        }
+        .toast.show { opacity: 1; }
+
+        /* INSTALL PROMPT */
+        .install-prompt {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: #222;
+            border: 1px solid var(--primary);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            display: none;
+            max-width: 300px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .install-prompt.show { display: block; }
+        .install-prompt h4 { margin: 0 0 10px 0; color: #fff; font-size: 14px; }
+        .install-prompt p { margin: 0 0 15px 0; color: #aaa; font-size: 12px; }
+        .install-prompt button { width: 100%; }
+
+        /* MOBILE RESPONSIVE */
+        @media (max-width: 900px) {
+            .sidebar { position: absolute; left: -250px; height: 100%; z-index: 50; transition: left 0.3s; }
+            .sidebar.open { left: 0; }
+            .control-bar { flex-wrap: wrap; }
+            .input-wrapper { min-width: 100%; order: 1; }
+            .control-group:last-child { order: 2; width: 100%; justify-content: space-between; }
+            .menu-toggle { display: block !important; }
+        }
+        
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            margin-right: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+    <div style="display: flex; align-items: center;">
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+        <div class="brand">
+            <span>▶</span> SANDRO STREAM
+            <div class="badge-plus">PLUS</div>
+        </div>
+    </div>
+    <div class="system-status">
+        <span><span class="status-dot"></span>Online</span>
+        <span id="clock">00:00</span>
+    </div>
+</header>
+
+<!-- MAIN WRAPPER -->
+<div class="main-wrapper">
+    
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <span>Canali</span>
+            <span class="channel-count" id="channelCount">0</span>
+        </div>
+        <!-- CLASSE scrollbar-hide AGGIUNTA QUI -->
+        <div class="channel-list scrollbar-hide" id="channelList">
+            <div class="empty-state">
+                <div class="empty-state-icon">📂</div>
+                <div>Carica una lista M3U<br>per visualizzare i canali</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- PLAYER AREA -->
+    <main class="player-area">
+        
+        <!-- VIDEO -->
+        <div class="video-container">
+            <video id="video" controls crossorigin="anonymous" playsinline webkit-playsinline></video>
+        </div>
+
+        <!-- INFO BAR -->
+        <div class="info-bar">
+            <div id="currentChannelInfo">Nessun canale selezionato</div>
+            <div class="recording-indicator" id="recIndicator">
+                <span>● REC</span>
+                <span id="recTimer">00:00:00</span>
+            </div>
+        </div>
+
+        <!-- CONTROL BAR -->
+        <div class="control-bar">
+            <div class="control-group input-wrapper">
+                <input type="text" id="m3uInput" placeholder="Incolla URL lista M3U...">
+                <button class="btn btn-primary" onclick="loadPlaylistFromURL()">🔗 Carica URL</button>
+            </div>
+            <div class="control-group">
+                <input type="file" id="m3uFileInput" accept=".m3u,.m3u8" onchange="loadPlaylistFromFile(this)">
+                <button class="btn btn-secondary" onclick="document.getElementById('m3uFileInput').click()">📁 Apri File</button>
+                <button class="btn btn-record" id="recordBtn" onclick="toggleRecording()">
+                    <span id="recordBtnText">● Registra</span>
+                </button>
+                <button class="btn btn-secondary btn-icon" onclick="toggleRecordingsPanel()" title="Archivio">📼</button>
+            </div>
+        </div>
+
+        <!-- RECORDINGS PANEL -->
+        <div class="recordings-panel scrollbar-hide" id="recordingsPanel">
+            <div class="recordings-header">
+                <span>Archivio (<span id="recCount">0</span>)</span>
+                <span style="color: #666; font-size: 10px;">Scarica i file per salvarli</span>
+            </div>
+            <div id="recordingsList">
+                <div class="empty-state" style="padding: 20px;"><div>Nessuna registrazione</div></div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- INSTALL PROMPT -->
+<div class="install-prompt" id="installPrompt">
+    <h4>📲 Installa Sandro Stream</h4>
+    <p>Aggiungi alla schermata Home per un'esperienza migliore su iPad.</p>
+    <button class="btn btn-primary" onclick="closeInstallPrompt()">Ho capito</button>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">Operazione completata</div>
+
+<script>
+    // === VARIABLES ===
+    const video = document.getElementById('video');
+    const channelListContainer = document.getElementById('channelList');
+    const channelCountEl = document.getElementById('channelCount');
+    const currentChannelInfo = document.getElementById('currentChannelInfo');
+    const recordBtn = document.getElementById('recordBtn');
+    const recordBtnText = document.getElementById('recordBtnText');
+    const recIndicator = document.getElementById('recIndicator');
+    const recTimer = document.getElementById('recTimer');
+    const recordingsList = document.getElementById('recordingsList');
+    const recordingsPanel = document.getElementById('recordingsPanel');
+    const recCountEl = document.getElementById('recCount');
+    const toast = document.getElementById('toast');
+    const sidebar = document.getElementById('sidebar');
+
+    let hls = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+    let recordings = [];
+    let recordingTimerInterval = null;
+    let recordingStartTime = null;
+
+    // === CLOCK ===
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('clock').innerText = now.toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // === SIDEBAR TOGGLE (MOBILE) ===
+    function toggleSidebar() {
+        sidebar.classList.toggle('open');
+    }
+
+    // === PLAYLIST FUNCTIONS ===
+    function loadPlaylistFromURL() {
+        const url = document.getElementById('m3uInput').value.trim();
+        if (!url) return showToast("Inserisci un URL valido", true);
+        showToast("Caricamento lista in corso...");
+        
+        fetch(url)
+            .then(response => {
+                if (!response.ok) throw new Error("Network error");
+                return response.text();
+            })
+            .then(data => parseM3U(data))
+            .catch(error => {
+                console.error(error);
+                showToast("Errore caricamento URL. Prova file locale.", true);
+                loadDemoChannels();
+            });
+    }
+
+    function loadPlaylistFromFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        showToast(`Caricamento: ${file.name}`);
+        const reader = new FileReader();
+        reader.onload = e => parseM3U(e.target.result);
+        reader.readAsText(file);
+        input.value = '';
+    }
+
+    function parseM3U(data) {
+        channelListContainer.innerHTML = '';
+        const lines = data.split('\n');
+        let currentChannel = {};
+        let count = 0;
+
+        lines.forEach(line => {
+            line = line.trim();
+            if (line.startsWith('#EXTINF:')) {
+                const info = line.split(',');
+                currentChannel.name = info[1] || "Canale " + (count + 1);
+            } else if (line.startsWith('http')) {
+                currentChannel.url = line;
+                addChannelToUI(currentChannel);
+                currentChannel = {};
+                count++;
+            }
+        });
+
+        channelCountEl.innerText = count;
+        
+        if (count === 0) {
+            channelListContainer.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div>Nessun canale trovato</div></div>`;
+            showToast("Nessun canale nella lista", true);
+        } else {
+            showToast(`${count} canali caricati`);
+        }
+    }
+
+    function loadDemoChannels() {
+        channelListContainer.innerHTML = '';
+        const demos = [
+            { name: "Test Stream 1", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" },
+            { name: "Test Stream 2", url: "https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_ld_7.m3u8" },
+            { name: "Big Buck Bunny", url: "https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_ld_7.m3u8" }
+        ];
+        demos.forEach(ch => addChannelToUI(ch));
+        channelCountEl.innerText = demos.length;
+        showToast("Caricati canali demo");
+    }
+
+    function addChannelToUI(channel) {
+        const div = document.createElement('div');
+        div.className = 'channel-item';
+        div.innerHTML = `<span class="channel-icon">📺</span><span>${escapeHtml(channel.name)}</span>`;
+        div.onclick = () => playChannel(channel.url, channel.name, div);
+        channelListContainer.appendChild(div);
+    }
+
+    function playChannel(url, name, element) {
+        if (isRecording) stopRecording();
+        if (window.innerWidth <= 900) sidebar.classList.remove('open');
+
+        document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+        if (element) element.classList.add('active');
+
+        currentChannelInfo.innerText = name;
+        video.title = name;
+
+        if (Hls.isSupported()) {
+            if (hls) hls.destroy();
+            hls = new Hls();
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(e => console.log(e)));
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url;
+            video.play().catch(e => console.log(e));
+        }
+    }
+
+    // === RECORDING ===
+    function toggleRecording() {
+        isRecording ? stopRecording() : startRecording();
+    }
+
+    function startRecording() {
+        if (!video.src && !hls) return showToast("Avvia un canale prima di registrare", true);
+        recordedChunks = [];
+        
+        try {
+            const stream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
+            if (!stream || stream.getTracks().length === 0) return showToast("Impossibile catturare il video", true);
+
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = saveRecording;
+            mediaRecorder.start();
+
+            isRecording = true;
+            recordingStartTime = Date.now();
+            recordBtn.classList.add('recording');
+            recordBtnText.innerText = "■ Stop Rec";
+            recIndicator.classList.add('active');
+            startTimer();
+            showToast("Registrazione avviata");
+        } catch (e) {
+            showToast("Errore registrazione: " + e.message, true);
+        }
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            isRecording = false;
+            stopTimer();
+            recordBtn.classList.remove('recording');
+            recordBtnText.innerText = "● Registra";
+            recIndicator.classList.remove('active');
+            showToast("Registrazione completata");
+        }
+    }
+
+    function saveRecording() {
+        if (recordedChunks.length === 0) { showToast("Nessun dato registrato", true); return; }
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const recObj = {
+            channel: currentChannelInfo.innerText,
+            date: new Date().toLocaleString('it-IT'),
+            blob: blob,
+            url: URL.createObjectURL(blob),
+            size: (blob.size / (1024 * 1024)).toFixed(2) + ' MB',
+            id: Date.now()
+        };
+        recordings.unshift(recObj);
+        renderRecordings();
+        showToast("Video salvato in archivio");
+    }
+
+    function startTimer() {
+        recordingTimerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            const h = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+            const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+            const s = (elapsed % 60).toString().padStart(2, '0');
+            recTimer.innerText = `${h}:${m}:${s}`;
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (recordingTimerInterval) { clearInterval(recordingTimerInterval); recordingTimerInterval = null; }
+        recTimer.innerText = '00:00:00';
+    }
+
+    // === ARCHIVE ===
+    function toggleRecordingsPanel() { recordingsPanel.classList.toggle('open'); }
+
+    function renderRecordings() {
+        recCountEl.innerText = recordings.length;
+        if (recordings.length === 0) {
+            recordingsList.innerHTML = `<div class="empty-state" style="padding: 20px;"><div>Nessuna registrazione</div></div>`;
+            return;
+        }
+        recordingsList.innerHTML = recordings.map(rec => `
+            <div class="rec-item">
+                <div>
+                    <div style="font-weight: 600; color: #fff;">📺 ${escapeHtml(rec.channel)}</div>
+                    <div style="color: #666; font-size: 11px;">${rec.date} • ${rec.size}</div>
+                </div>
+                <div class="rec-actions">
+                    <button class="btn btn-primary btn-sm" onclick="playRecording(${rec.id})">▶️</button>
+                    <button class="btn btn-secondary btn-sm" onclick="downloadRecording(${rec.id})">⬇️</button>
+                    <button class="btn btn-secondary btn-sm" style="background:#500;" onclick="deleteRecording(${rec.id})">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function playRecording(id) {
+        const rec = recordings.find(r => r.id === id);
+        if (rec && rec.url) {
+            recordingsPanel.classList.remove('open');
+            video.src = rec.url;
+            video.play();
+            currentChannelInfo.innerText = "📼 Archivio: " + rec.channel;
+            document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+        }
+    }
+
+    function downloadRecording(id) {
+        const rec = recordings.find(r => r.id === id);
+        if (rec && rec.blob) {
+            const a = document.createElement('a');
+            a.href = rec.url;
+            const safeName = rec.channel.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+            a.download = `SANDRO_${safeName}_${rec.id}.webm`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast("Download avviato");
+        }
+    }
+
+    function deleteRecording(id) {
+        const rec = recordings.find(r => r.id === id);
+        if (rec && rec.url) URL.revokeObjectURL(rec.url);
+        recordings = recordings.filter(r => r.id !== id);
+        renderRecordings();
+        showToast("Registrazione eliminata");
+    }
+
+    // === UTILS ===
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showToast(message, isError = false) {
+        toast.innerText = message;
+        toast.style.borderLeftColor = isError ? '#ff3b30' : '#e50914';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // === INSTALL PROMPT LOGIC ===
+    function checkInstallPrompt() {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isStandalone = window.navigator.standalone === true;
+        
+        if (isIOS && !isStandalone) {
+            // Mostra istruzioni per iOS
+            document.getElementById('installPrompt').classList.add('show');
+            document.querySelector('#installPrompt p').innerText = "Tocca Condividi 📤 > Aggiungi a Home per installare l'app.";
+        }
+    }
+    
+    function closeInstallPrompt() {
+        document.getElementById('installPrompt').classList.remove('show');
+        localStorage.setItem('installPromptDismissed', 'true');
+    }
+
+    // Check on load if user hasn't dismissed before
+    if (!localStorage.getItem('installPromptDismissed')) {
+        setTimeout(checkInstallPrompt, 2000);
+    }
+
+    // === CLEANUP ===
+    window.addEventListener('beforeunload', () => {
+        if (isRecording) stopRecording();
+        recordings.forEach(rec => { if (rec.url) URL.revokeObjectURL(rec.url); });
+        if (hls) hls.destroy();
+    });
+
+    // === DEMO ON LOAD ===
+    loadDemoChannels();
+</script>
+
+</body>
+</html>
